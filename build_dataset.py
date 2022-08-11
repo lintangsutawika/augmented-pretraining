@@ -3,11 +3,21 @@ import re
 
 import json
 import random
+import sqlite3
 import argparse
 
+import pandas as pd
+import numpy as np
+
+from tqdm import tqdm
+from urllib.parse import unquote
+
 parser = argparse.ArgumentParser()
-parser.add_argument("--index", type=str)
-parser.add_argument("--wiki_dir", type=str)
+parser.add_argument("--index_path", default=None, type=str)
+parser.add_argument("--dump_path", default=None, type=str)
+parser.add_argument("--table_path", default=None, type=str)
+parser.add_argument("--redirect_table_path", default=None, type=str)
+parser.add_argument("--index_table_path", default=None, type=str)
 parser.add_argument("--samples", default=10, type=int)
 args = parser.parse_args()
 
@@ -15,8 +25,11 @@ class WikiDump:
     """docstring for WikiDump"""
     def __init__(
         self,
-        index_path,
-        dump_path,
+        index_path=None,
+        dump_path=None,
+        table_path=None,
+        redirect_table_path=None,
+        index_table_path=None,
         regex_url=None,
         regex_title=None,
         regex_word=None,
@@ -25,6 +38,9 @@ class WikiDump:
 
         self.index_path = index_path
         self.dump_path = dump_path
+        self.table_path = table_path
+        self.redirect_table_path = redirect_table_path
+        self.index_table_path = index_table_path
 
         if regex_url == None:
             self.regex_url = r"&lt;a(.*?)&lt;/a&gt;"
@@ -42,52 +58,125 @@ class WikiDump:
         else:
             self.regex_word = regex_word
 
-        self.article_idx = {} #BidirectionalDict()
-        with open(self.index_path, "r") as file:
-            for line in file.readlines():
-                file_index, article_index, *title = line[:-1].split(":")
-                title = ":".join(title)
-                article_index = int(article_index)
-                # self.article_idx.__setitem__(title, article_index)
-                self.article_idx[title] = article_index
+        if self.redirect_table_path is not None:
+            self.redirect_table = pd.read_csv(
+                self.redirect_table_path,
+                sep="\t",
+                names=["id", "namespace", "title"]
+            )
 
-        dir_list = os.listdir(self.dump_path)
-        dir_list.sort()
+            import ast
+            def reformat(x):
+                x = ast.literal_eval(
+                    "b"+x
+                ).decode('utf-8')
+                x = re.sub("_", " ", x)
+                return x
 
-        all_file_paths = []
-        for _dir in dir_list:
-            subdir = os.path.join(self.dump_path, _dir)
-            file_list = os.listdir(subdir)
-            file_list.sort()
+            self.redirect_table["title"] = self.redirect_table["title"].apply(reformat)
 
-            for file in file_list:
-                all_file_paths.append(
-                    os.path.join(subdir, file)
-                )
+        if self.table_path is not None:
+            self.article_df = pd.read_pickle(self.table_path)
+            self.index_df = pd.read_pickle(self.index_table_path)
+        else:
+            with open(self.index_path, "r") as file:
+                self.article_df = pd.DataFrame(data={
+                    "page": [re.sub("_", " ", page) for page in file.read().splitlines()[1:]],
+                    })
 
-        self.article_filename = {}
-        for filename in all_file_paths:
-            with open(filename, "r") as file:
-                for text in file.readlines():
-                    _text = json.loads(text)
-                    _id = int(_text["id"])
-                    _title = _text["title"]
-                    self.article_filename[_title] = filename
+            self.article_df["id"] = np.nan
+            self.article_df["file_path"] = np.nan
+            self.article_df["in_degree"] = 0
+            self.article_df["linked"] = -1
+
+            dir_list = os.listdir(self.dump_path)
+            dir_list.sort()
+
+            all_file_paths = []
+            total_articles = 0
+            for _dir in dir_list:
+                subdir = os.path.join(self.dump_path, _dir)
+                file_list = os.listdir(subdir)
+                file_list.sort()
+
+                article_id = {}
+                article_text = {}
+                article_file_path = {}
+                for file in file_list:
+                    all_file_paths.append(
+                        os.path.join(subdir, file)
+                    )
+
+                    complete_file_path = os.path.join(subdir, file)
+
+                    with open(complete_file_path, "r") as file:
+                        for raw_file in file.readlines():
+                            article_dict = json.loads(raw_file)
+
+                            title = article_dict["title"]
+
+                            # linked = self.get_linked_titles(article_dict["text"])
+                            article_id[title] = article_dict["id"]
+                            article_text[title] = article_dict["text"]
+                            article_file_path[title] = complete_file_path
+                            total_articles += 1
+
+                article_list = list(article_file_path.keys())
+
+                _df = self.article_df[self.article_df['page'].isin(article_list)]
+                _df['file_path'] = _df['page'].map(article_file_path)
+                _df['text'] = _df['page'].map(article_text)
+                _df['id'] = _df['page'].map(article_id)
+
+                def fn(x):
+                    return self.get_linked_titles(x)
+
+                _df['linked'] = _df['text'].apply(fn)
+
+                self.article_df.loc[_df.index,:]=_df[:]
+
+            self.index_df = self.article_df[["page", "id"]]
+            self.index_df = self.index_df[self.index_df["id"].notnull()]
+            self.index_df.to_pickle("index_table.pkl")
+
+            self.article_df = self.article_df[
+                (self.article_df['file_path'].notnull()) & (self.article_df['linked'] != -1)
+            ]
+
+
+    def _process_link_count(
+        self,
+        save_path
+    ):
+
+        self.article_df["in_degree"] = 0
+        for link in tqdm(self.article_df['linked'].tolist()):
+            idx = self.article_df[self.article_df['page'].isin(link)].index
+            self.article_df.loc[idx, "in_degree"] += 1
+
+        self.article_df = self.article_df.sort_values('in_degree', ascending=False)
+        self.article_df['in_degree'][self.article_df['in_degree'] == 0] = 1
+
+        self.article_df.to_pickle(save_path)
 
 
     def _process_url_title_string(
         self,
         url_title_string
     ):
-        n = re.search(self.regex_title, url_title_string)
-        # title_string = url_title_string[n.start()+4:n.end()-4]
-        title_string = url_title_string[n.start()+6:n.end()-4]
-        title_string = re.sub("%20", " ", title_string)
-        title_string = title_string[0].upper() + title_string[1:]
-        return title_string
 
+        try:
+            n = re.search(self.regex_title, url_title_string)
+            title_string = url_title_string[n.start()+6:n.end()-4]
+            # title_string = re.sub("%20", " ", title_string)
+            title_string = unquote(title_string)
+            title_string = title_string[0].upper() + title_string[1:]
+            return title_string
+        except:
+            return False
+ 
 
-    def _get_clean_text(
+    def _clean_text(
         self,
         text
     ):
@@ -108,29 +197,6 @@ class WikiDump:
         return text
 
 
-    def get_article_from_file(
-        self,
-        file_path,
-        article=None,
-    ):
-        
-        article_list = {}
-        with open(file_path, "r") as file:
-            for line in file.readlines():
-                _line = json.loads(line)
-                _title = _line["title"]
-                _text = _line["text"]
-
-                if article is not None:
-                    if article == _title:
-                        article_list[_title] = _text
-                        break
-                else:
-                    article_list[_title] = _text
-
-        return article_list
-
-
     def get_linked_titles(
         self,
         sampled_text
@@ -145,81 +211,145 @@ class WikiDump:
 
             title_string = self._process_url_title_string(url_title_string)
 
-            # if title_string in self.article_filename:
-            if title_string in self.article_idx:
-                file_path = self.article_filename[title_string]
+            if title_string != False:
                 connected_text.append(title_string)
 
-        return connected_text
+        if connected_text == []:
+            return -1
+        else:
+            return connected_text
 
 
-    def get_text(
+    def get_article_text(
         self,
-        article
+        file_path,
+        article,
+        clean=True,
     ):
+        
+        article_list = {}
+        with open(file_path, "r") as file:
+            for line in file.readlines():
+                _line = json.loads(line)
+                _title = _line["title"]
+                _text = _line["text"]
 
-        file_path = self.article_filename[article]
-        text = self.get_article_from_file(file_path, article)[article]
-        return text
+                if article == _title:
+                    if clean == True:
+                        _text = self._clean_text(_text)
+
+                    return _text
+        return -1
 
 
     def get_sample(
-        self
+        self,
+        connection="contigous"
     ):
 
-        article_titles = list(self.article_filename.keys())
-        filtered_idx_list = []    
-        linked_titles_list = []
-        # while (sampled_sentence == ''):# 
-        while (len(filtered_idx_list) == 0) and (len(linked_titles_list) == 0):
-            # print(linked_titles_list)
-            sampled_title = random.sample(article_titles, 1)[0]
-            sampled_sentence = self.get_text(sampled_title)
+        assert connection in ["contigous", "random", "linked"]
 
-            sampled_sentence_list = re.split(
-                r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', sampled_sentence
+        sampled_article = self.article_df.sample(1)
+        sampled_page = sampled_article["page"].values[0]
+        sampled_id = sampled_article["id"].values[0]
+        sampled_file_path = sampled_article["file_path"].values[0]
+        sampled_links = sampled_article["linked"].values[0]
+        sampled_links = [re.sub("_", " ", link) for link in sampled_links]
+
+        sampled_text = self.get_article_text(
+            sampled_file_path, sampled_page, clean=True
+        )
+
+        if connection == "contigous":
+            verbalizers = [
+                "{} {}",
+                "{} is continued by {}",
+                "{} is followed by {}"
+            ]
+
+            sampled_text_list = re.split(
+                r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', sampled_text
             )
 
-            for idx, sentence in enumerate(sampled_sentence_list[:-1]):
-                linked_titles = self.get_linked_titles(sentence)
-                if (re.search(self.regex_title, sentence)) and \
-                    (len(linked_titles) != 0):
-                    filtered_idx_list.append(idx)
-                    linked_titles_list.append(linked_titles)
+            num_sentence = len(sampled_text_list)
+            if num_sentence > 1:
+                _idx = num_sentence//2
+                segment_a = " ".join(sampled_text_list[:_idx])
+                segment_b = " ".join(sampled_text_list[_idx:])
+            else:
+                segment_a = sampled_text
+                segment_b = sampled_text
+        else:
 
-        _idx = random.randint(0, len(filtered_idx_list)-1)
-        sampled_idx = filtered_idx_list[_idx]
-        sampled_text = sampled_sentence_list[sampled_idx]
-        sampled_link = linked_titles_list[_idx]
-        
-        contigous_sentence = " ".join(sampled_sentence_list[sampled_idx+1:])
+            for idx, link in enumerate(sampled_links):
+                try:
+                    link_id = self.index_df[
+                        self.index_df["page"] == link
+                    ]['id'].values[0]
+                    redirect_link = self.redirect_table[
+                        self.redirect_table["id"] == int(link_id)
+                    ]["title"].values[0]
+                    print("TRUE")
+                    print("FROM {}".format(link))
+                    print("TO {}".format(redirect_link))
+                    sampled_links[idx] = redirect_link
+                except:
+                    pass
 
-        return {
-            "sample": self._get_clean_text(sampled_text),
-            "linked": sampled_link,
-            "contigous": self._get_clean_text(contigous_sentence),
-            }
+            segment_a = sampled_text
+            if connection == "random":
+                verbalizers = [
+                    "{} has no connection to {}",
+                    "{} is not connected to {}",
+                    "{} is not linked to {}"
+                ]
+
+                not_sample_list = [sampled_page] + sampled_links
+                random_article = self.article_df[
+                    ~self.article_df["page"].isin(not_sample_list)
+                    ].sample(1)
+                random_page = random_article['page'].values[0]
+                random_file_path = random_article['file_path'].values[0]
+
+                segment_b = self.get_article_text(
+                    random_file_path, random_page, clean=True
+                )
+
+            elif connection == "linked":
+                verbalizers = [
+                    "{} is linked to {}",
+                    "{} has a connection to {}",
+                    "{} is connected to {}"
+                ]
+
+                # Sampling which linked article to use
+                # is proportional to the inverse of the number of in-degrees an article has
+                # this is so that articles with high in-degrees are not over-sampled
+                linked_article = self.article_df[
+                    self.article_df["page"].isin(sampled_links)
+                    ].sample(1,weights=1/self.article_df["in_degree"])
+
+                linked_page = linked_article['page'].values[0]
+                linked_file_path = linked_article['file_path'].values[0]
+                linked = linked_article['linked'].values[0]
+
+                segment_b = self.get_article_text(
+                    linked_file_path, linked_page, clean=True
+                )
+
+        return segment_a, segment_b, random.sample(verbalizers, 1)[0]
 
 
 if __name__ == '__main__':
 
     num_samples = args.samples
     wiki = WikiDump(
-        index_path=args.index,
-        dump_path=args.wiki_dir
+        index_path=args.index_path,
+        dump_path=args.dump_path,
+        table_path=args.table_path,
+        redirect_table_path=args.redirect_table_path,
+        index_table_path=args.index_table_path
         )
-
-    # for i in range(num_samples):
-    #     print("\n#####")
-    #     sample = wiki.get_sample()
-    #     sample
-    #     print("#####\n")
-        
-    #Get Contigous
-    #Get Linked
-    #Get Random
-
-
 
 
 
