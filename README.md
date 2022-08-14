@@ -3,9 +3,7 @@ Generate Linked Document Pretraining data for LLMs
 
 ## Prerequisites
 
-The files needed can be downloaed from [here](https://dumps.wikimedia.org/backup-index.html).
-
-The preperation can be done with the script file.
+The files needed can be downloaed from [here](https://dumps.wikimedia.org/backup-index.html). The preperation can be done with the script file.
 ```
 sh prepare.sh <file directory> <language code> <date code>
 ```
