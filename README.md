@@ -22,7 +22,7 @@ python -m wikiextractor.WikiExtractor <Wikipedia dump file> --json --links -o <s
 
 ### Process Page Title List
 
-Download the page title list file
+Download the page title list file.
 ```
 <lang code>wiki-<date code>-all-titles-in-ns0.gz
 ```
@@ -30,7 +30,7 @@ which we can then decompress with `gunzip`.
 
 ### Process Redirect List
 
-Download the redirect list 
+Download the redirect list.
 ```
 enwiki-20220801-redirect.sql.gz
 ```
