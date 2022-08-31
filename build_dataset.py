@@ -168,7 +168,7 @@ class WikiDump:
             self.df.loc[_idx, "in_degree"] += 1
 
         if save_path != None:
-            self.df.to_pickle(save_path)
+            self.df[self.df['in_degree'] > 0].to_pickle(save_path)
 
     def _process_link_count(
         self,
@@ -200,11 +200,11 @@ class WikiDump:
             for p in processes:
                 p.join()
 
-            for part in partitions:
+            for part in tqdm(partitions):
                 df = pd.read_pickle(part)
                 idx = df[df['in_degree'] != 0].index
                 self.df.loc[idx, "in_degree"] += df.loc[idx, "in_degree"]
-                os.remove(part)
+                # os.remove(part)
 
         else:
             self.df["in_degree"] = 0
