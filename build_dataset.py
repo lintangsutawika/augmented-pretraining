@@ -86,6 +86,7 @@ class WikiDump:
 
         if (self.data_frame_path is not None) and (os.path.exists(self.data_frame_path)):
             self.df = pd.read_pickle(self.data_frame_path)
+            self.df = self.df[self.df['linked'] != -1]
         else:
             with open(self.page_list_path, "r") as file:
                 self.df = pd.DataFrame(data={
@@ -326,7 +327,7 @@ class WikiDump:
 
         assert connection in ["contigous", "random", "linked"]
 
-        sampled_article = self.df[self.df['linked'] != -1].sample(1)
+        sampled_article = self.df.sample(1)
         sampled_page = sampled_article["page"].values[0]
         
         # sampled_page = self.check_redirect(sampled_page)
