@@ -85,9 +85,12 @@ class WikiDump:
             self.redirect_df["title"] = self.redirect_df["title"].apply(reformat)
 
         if (self.data_frame_path is not None) and (os.path.exists(self.data_frame_path)):
+            print("data_frame_path exists, loading....")
             self.df = pd.read_pickle(self.data_frame_path)
             self.df = self.df[self.df['linked'] != -1]
+            print("dataframe loaded!")
         else:
+            print("building new dataframe from data_frame_path....")
             with open(self.page_list_path, "r") as file:
                 self.df = pd.DataFrame(data={
                     "page": [re.sub("_", " ", page) for page in file.read().splitlines()[1:]],
@@ -133,7 +136,7 @@ class WikiDump:
                 article_list = list(article_file_path.keys())
 
                 _df = self.df[self.df['page'].isin(article_list)]
-                _df['file_path'] = _df['page'].map(article_file_path)
+                _df['file_path'] = _df['page'].map(article_file_path).apply(lambda x: "/".join(x.split("/")[-2:]))
                 _df['text'] = _df['page'].map(article_text)
                 _df['id'] = _df['page'].map(article_id)
 
@@ -285,8 +288,10 @@ class WikiDump:
         clean=True,
     ):
         
+        complete_file_path = os.path.join(self.wiki_dump_path, file_path)
+
         article_list = {}
-        with open(file_path, "r") as file:
+        with open(complete_file_path, "r") as file:
             for line in file.readlines():
                 _line = json.loads(line)
                 _title = _line["title"]

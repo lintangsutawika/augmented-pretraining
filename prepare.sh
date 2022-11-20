@@ -15,9 +15,9 @@ wget "https://dumps.wikimedia.org/${lang}wiki/${timestamp}/${lang}wiki-${timesta
 gunzip -d "${dir}/${lang}wiki-${timestamp}-all-titles-in-ns0.gz" 
 
 python WikiUtils/parse_mysqldump.py \
-    "${dir}/${lang}wiki-${timestamp}-redirect.sql.gz" \
-    redirect \
-    "${dir}/redirect.tsv"
+   "${dir}/${lang}wiki-${timestamp}-redirect.sql.gz" \
+   redirect \
+   "${dir}/redirect.tsv"
 
 python -m wikiextractor.WikiExtractor \
     "${dir}/${lang}wiki-${timestamp}-pages-articles-multistream.xml.bz2" \
