@@ -8,11 +8,21 @@ dir="$1"
 lang="$2"
 timestamp="$3"
 
-wget "https://dumps.wikimedia.org/${lang}wiki/${timestamp}/${lang}wiki-${timestamp}-pages-articles-multistream.xml.bz2" -P "${dir}"
-wget "https://dumps.wikimedia.org/${lang}wiki/${timestamp}/${lang}wiki-${timestamp}-all-titles-in-ns0.gz" -P "${dir}"
-wget "https://dumps.wikimedia.org/${lang}wiki/${timestamp}/${lang}wiki-${timestamp}-redirect.sql.gz" -P "${dir}"
+ARTICLES="${lang}wiki-${timestamp}-pages-articles-multistream.xml.bz2"
+TITLES="${lang}wiki-${timestamp}-all-titles-in-ns0.gz"
+REDIRECT="${lang}wiki-${timestamp}-redirect.sql.gz"
 
-gunzip -d "${dir}/${lang}wiki-${timestamp}-all-titles-in-ns0.gz" 
+for FILE in $ARTICLES $TITLES $REDIRECT
+do
+   if test -f "${dir}${FILE}"; then
+      echo "$FILE exists."
+   else
+      echo "$FILE does not exists."
+      wget "https://dumps.wikimedia.org/${lang}wiki/${timestamp}/"${FILE} -P "${dir}"
+   fi
+done
+
+gunzip -k "${dir}/${lang}wiki-${timestamp}-all-titles-in-ns0.gz"
 
 python WikiUtils/parse_mysqldump.py \
    "${dir}/${lang}wiki-${timestamp}-redirect.sql.gz" \
