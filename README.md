@@ -63,3 +63,7 @@ To prevent oversampling of highly cited pages in Wikipedia, we will need to calc
 ### Sample Generation
 
 TODO
+
+### Misc
+
+This repo contains other repos as submodules. To clone everything including the submodules use `git clone --recurse-submodules <repo>`
