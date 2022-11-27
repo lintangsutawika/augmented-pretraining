@@ -22,15 +22,27 @@ do
    fi
 done
 
-gunzip -k "${dir}/${lang}wiki-${timestamp}-all-titles-in-ns0.gz"
+if test -f "${dir}/${lang}wiki-${timestamp}-all-titles-in-ns0"; then
+   echo "${lang}wiki-${timestamp}-all-titles-in-ns0 exists."
+else
+   gunzip -d "${dir}/${lang}wiki-${timestamp}-all-titles-in-ns0.gz"
+fi
 
-python WikiUtils/parse_mysqldump.py \
-   "${dir}/${lang}wiki-${timestamp}-redirect.sql.gz" \
-   redirect \
-   "${dir}/redirect.tsv"
+if test -f "${dir}redirect.tsv"; then
+   echo "redirect.tsv exists."
+else
+   python WikiUtils/parse_mysqldump.py \
+      "${dir}/${lang}wiki-${timestamp}-redirect.sql.gz" \
+      redirect \
+      "${dir}/redirect.tsv"
+fi
 
-python -m wikiextractor.WikiExtractor \
-    "${dir}/${lang}wiki-${timestamp}-pages-articles-multistream.xml.bz2" \
-    -o "${dir}/wiki/" \
-    --json \
-    --links
+if test -f "${dir}wiki/"; then
+   echo "wiki/ exists."
+else
+   python -m wikiextractor.WikiExtractor \
+      "${dir}/${lang}wiki-${timestamp}-pages-articles-multistream.xml.bz2" \
+      -o "${dir}/wiki/" \
+      --json \
+      --links
+fi
