@@ -1,7 +1,11 @@
-# linked-document-pretraining
+# Augmented Pretraining
+
+Some strategies that can help make pretraining models better.
+
+## linked-document-pretraining
 Generate Linked Document Pretraining data for LLMs
 
-## Prerequisites
+### Prerequisites
 
 The files needed can be downloaed from [here](https://dumps.wikimedia.org/backup-index.html). The preperation can be done with the script file.
 ```
@@ -9,7 +13,7 @@ sh prepare.sh <file directory> <language code> <date code>
 ```
 `<lang code>` can be filled in with any language available on Wikipedia such as `en` for English. `<data code>` denotes the date the dump was taken. This is updated periodically so you might want the latest version available for example: `sh prepare.sh enwiki/ en 20220801`.
 
-### Process Wikipedia Dump
+#### Process Wikipedia Dump
 
 Download the Wikipedia dump file.
 ```
@@ -20,7 +24,7 @@ After downloading the file, we can extract it into something we can process late
 python -m wikiextractor.WikiExtractor <Wikipedia dump file> --json --links -o <save directory>
 ```
 
-### Process Page Title List
+#### Process Page Title List
 
 Download the page title list file.
 ```
@@ -28,7 +32,7 @@ Download the page title list file.
 ```
 which we can then decompress with `gunzip`. 
 
-### Process Redirect List
+#### Process Redirect List
 
 Download the redirect list.
 ```
@@ -36,9 +40,9 @@ enwiki-20220801-redirect.sql.gz
 ```
 and extract with WikiUtils.
 
-## Data Preperation
+### Data Preperation
 
-### Build Dataset Generator
+#### Build Dataset Generator
 
 Before we can build the actual dataset, we will need to build the generator thet will sample from the Wikipedia pages, check for linked pages, and sample articles based on whether we want the the samples as `contigious`, `linked`, or `random`.
 
@@ -51,11 +55,11 @@ python build_dataset.py \
     --num_proc 8
 ```
 
-### Calculating In-Degrees for each Page
+#### Calculating In-Degrees for each Page
 
 To prevent oversampling of highly cited pages in Wikipedia, we will need to calculate the in-degree value of each page. This is computationally demanding and is best done in a large multi-core setup in order to utilize multiprocessing features to break down the task. The number of cores used can be defined in the `num_proc` argument
 
 
-## Sample Generation
+### Sample Generation
 
 TODO
