@@ -4,10 +4,14 @@ import jax.numpy as jnp
 from functools import partial
 from jax.experimental.sparse import BCOO
 
-# ~5x faster than NLTK on CPU.
-# TODO: Always 1 ngram left behind
+# 5x faster than NLTK's ngram
 @partial(jax.jit, static_argnames=['n'])
 def ngrams(sequence, n):
+
+    assert len(sequence) >= n
+
+    if type(sequence) == list:
+        sequence = jnp.asarray(sequence)
 
     history = jax.lax.slice(sequence, [0], [n])
     sequence = jax.lax.slice(sequence, [n], [len(sequence)])
@@ -18,7 +22,7 @@ def ngrams(sequence, n):
     
     _, ys = jax.lax.scan(_f, history, sequence)
 
-    return ys
+    return jnp.append(jnp.expand_dims(history, 0), ys, axis=0)
 
 
 class NGramCounter:
