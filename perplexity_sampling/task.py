@@ -23,7 +23,7 @@ def extract_text_from_jsonl_tf(json: str):
 
 DEFAULT_SPM_PATH = "c4.model"
 OUTPUT_FEATURES = {
-    "inputs": 
+    "inputs":
         seqio.Feature(
             vocabulary=seqio.SentencePieceVocabulary(DEFAULT_SPM_PATH),
             add_eos=True,
