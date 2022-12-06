@@ -55,13 +55,3 @@ TaskRegistry.add(
     metric_fns=[]
 )
 
-# if __name__ == '__main__':
-
-#     cmd = f"seqio_cache_tasks \
-#         --tasks={tasks} \
-#         --excluded_tasks={excluded_tasks} \
-#         --output_cache_dir={output_cache_dir} \
-#         --module_import=dataset \
-#         --alsologtostderr"
-
-#     os.system(cmd)
