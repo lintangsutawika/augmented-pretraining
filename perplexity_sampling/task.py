@@ -38,7 +38,7 @@ TaskRegistry.add(
     "calculate_perplexity",
     source=seqio.TextLineDataSource(
         split_to_filepattern={
-            "train": ["../../c4-train.00974-of-01024.json"],
+            "train": ["/fsx/lintangsutawika/c4-train.00974-of-01024.json"],
             }
         ),
         preprocessors=[
