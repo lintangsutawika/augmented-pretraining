@@ -13,25 +13,29 @@ import os
 import seqio
 import functools
 
+import tensorflow as tf
+
 TaskRegistry = seqio.TaskRegistry
 
+# @seqio.map_over_dataset
+# def extract_text_from_jsonl_tf(json: str):
+#     output = tf.strings.split(json, '{"text": "', maxsplit=1)[1]
+#     output = tf.strings.split(output, '",', maxsplit=1)[0]
+#     return {"text": output}
+
 @seqio.map_over_dataset
-def extract_text_from_jsonl_tf(json: str):
-    output = tf.strings.split(json, '{"text": "', maxsplit=1)[1]
+def extract_text_from_json_tf(json: str):
+    output = tf.strings.split(json, '{"text":"', maxsplit=1)[1]
     output = tf.strings.split(output, '",', maxsplit=1)[0]
     return {"text": output}
 
-DEFAULT_SPM_PATH = "c4.model"
+DEFAULT_SPM_PATH = "/fsx/lintangsutawika/augmented-pretraining/c4.model"
 OUTPUT_FEATURES = {
-    "inputs":
+    "text":
         seqio.Feature(
             vocabulary=seqio.SentencePieceVocabulary(DEFAULT_SPM_PATH),
             add_eos=True,
             required=False),
-    "targets":
-        seqio.Feature(
-            vocabulary=seqio.SentencePieceVocabulary(DEFAULT_SPM_PATH),
-            add_eos=True)
     }
 
 TaskRegistry.add(
@@ -42,12 +46,7 @@ TaskRegistry.add(
             }
         ),
         preprocessors=[
-            extract_text_from_jsonl_tf,
-            functools.partial(
-                seqio.preprocessors.rekey, key_map={
-                    "inputs": None,
-                    "targets": "text"
-                }),
+            extract_text_from_json_tf,
             seqio.preprocessors.tokenize,
             seqio.CacheDatasetPlaceholder(),
     ],

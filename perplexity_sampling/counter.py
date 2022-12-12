@@ -30,14 +30,16 @@ class NGramCounter:
             ngram = jnp.asarray(ngram)
 
         k = k if k else self.k
-
         assert k >= len(ngram)
-        indices = jnp.append(jnp.expand_dims(ngram, 0), jnp.array([[0]*(k-len(ngram))]), axis=1)
+
         increment = jnp.array([1])
 
-        matrix = matrix + BCOO((increment, indices), shape=matrix.shape)
+        if len(ngram) < k:
+            indices = jnp.append(jnp.expand_dims(ngram, 0), jnp.array([[0]*(k-len(ngram))], dtype=jnp.int32), axis=1, dtype=jnp.int32)
+        else:
+            indices = jnp.expand_dims(ngram, 0)
 
-        return matrix
+        return matrix + BCOO((increment, indices), shape=matrix.shape)
 
     # @partial(jax.jit, static_argnames=['k'])
     def get_value(self, matrix, ngram, k=None):
@@ -47,7 +49,10 @@ class NGramCounter:
 
         k = k if k else self.k
         assert k >= len(ngram)
-        indices = jnp.append(ngram, jnp.array([0]*(k-len(ngram))))
+        if len(ngram) < k:
+            indices = jnp.append(ngram, jnp.array([0]*(k-len(ngram))))
+        else:
+            indices = jnp.asarray(ngram)
 
         def _f(element, token):
             return element[int(token)], 0
