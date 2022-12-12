@@ -3,6 +3,8 @@ import jax.numpy as jnp
 
 from functools import partial
 
+from perplexity_sampling import util
+
 class StupidBackoffSmoothing:
 
     def __init__(
@@ -14,84 +16,84 @@ class StupidBackoffSmoothing:
         self.N = N #8700*512*4
         self.alpha = alpha
 
-    # @partial(jit, static_argnums=(0,))
+    # @partial(jax.jit, static_argnums=(0,4,5))
     def S(self, w_seq, idx, k=None, offset=1, alpha=0.4):
 
-        k = k if k else self.k
+        # k = k if k else self.k
         alpha = alpha if alpha else self.alpha
 
         # f(w_{i-k+1}^{i})
         numerator = self.freq(w_seq, idx-k+offset, idx)
-
-        print(
-            "from idx: {} to idx: {}, numerator: {}".format(
-                idx-k+offset, idx, numerator
-            )
-        )
+        # print("Count Numerator")
+        # print(
+        #     "from idx: {} to idx: {}, numerator: {}".format(
+        #         idx-k+offset, idx, numerator
+        #     )
+        # )
 
         if numerator > 0:
+            # print("Count Denominator")
             if (idx) == (idx-k+offset):
                 denominator = self.N
             else:
                 # f(w_{i-k+1}^{i-1})
-                denominator = self.freq(w_seq, idx-1, idx-k+offset)
+                denominator = self.freq(w_seq, idx-k+offset, idx-1)
 
             return numerator/denominator
         else:
             offset += 1
             return alpha * self.S(w_seq, idx, k, offset)
 
-    def freq(self, w_seq, from_idx, to_idx):
 
-        if from_idx < 0:
-            from_idx = 0
-        
-        if to_idx < 0:
-            to_idx = 0
-        to_idx += 1 #Offset by 1 for proper indexing in python
+    # @partial(jax.jit, static_argnums=(0,4))
+    # @partial(jax.jit, static_argnums=(0,2,3,4))
+    def freq(self, w_seq, from_idx, to_idx, k=None):
 
-        ngram = w_seq[from_idx:to_idx]
+        k = k if k else self.k
 
-        print("Current ngram: {}".format(ngram))
+        ngram = util.get_slice(w_seq, from_idx, to_idx)
+
+        # print(
+        #     "CORRECTED: from idx: {} to idx: {}".format(
+        #         from_idx, to_idx
+        #     )
+        # )            
+        # print("Current ngram: {}".format(ngram))
 
         if type(ngram) == list:
             ngram = jnp.asarray(ngram)
 
-        k = k if k else self.k
-        assert k >= len(ngram)
-        if len(ngram) < k:
-            indices = jnp.append(ngram, jnp.array([0]*(k-len(ngram))))
-        else:
-            indices = jnp.asarray(ngram)
+        count = util.get_value(self.matrix, ngram, k)
+        return count
 
-        def _f(element, token):
-            return element[int(token)], 0
-        
-        element = self.matrix
-        for token in indices:
-            element, _ = _f(element, token)
-
-        return element.todense()
-
-
-    def score(w_seq, k=None):
+    # @partial(jax.jit, static_argnums=(0))
+    def score(self, w_seq, k):
 
         k = k if k else self.k
+
+        if type(w_seq) == list:
+            w_seq = jnp.asarray(w_seq)
 
         log_score = 0
         for idx in range(0, len(w_seq)):
             # w_i | w_{i-k+1}^{i}
             log_score += jnp.log10(self.S(w_seq, idx, k=k))
 
-        # L = jnp.array(range(len(w_seq)))
-        # for i 
-        # score, _ = jax.lax.scan(self.S, score, L)
+        return log_score
 
-        return score
+if __name__ == '__main__':
 
-    # def freq(w_seq)
-# In [114]: s = []
-#      ...: for i in range(len(sentence)):
-#      ...:     print(i)
-#      ...:     s.append(sbs.S(sentence, i))
-#      ...:     print(sp.decode([sentence[i]]))
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--matrix", type=str)
+    parser.add_argument("--k", default=5, type=int)
+    parser.add_argument("--N", default=25_000_000, type=int)
+    args = parser.parse_args()
+
+    sentence = jnp.asarray([64, 10, 8, 6224, 35, 542, 71, 66, 11916])
+    matrix = jnp.load(args.matrix, allow_pickle=True).tolist()
+    sbs = StupidBackoffSmoothing(matrix=matrix, k=args.k, N=args.N)
+    log_score = sbs.score(sentence, k=5)
+
+    print("log_score: {}".format(log_score))

@@ -7,7 +7,7 @@ import jax.numpy as jnp
 
 from perplexity_sampling import task
 from perplexity_sampling import util
-from perplexity_sampling import counter
+from perplexity_sampling import matrix
 
 from tqdm import tqdm
 from functools import partial
@@ -62,10 +62,9 @@ if __name__ == '__main__':
 
     k = 5
     vocab_size = 1_000_000
-    cnt = counter.NGramCounter(vocab_size, k)
-    matrix = cnt.init_matrix()
+    matrix = util.init_matrix()
 
-    increment_fn = jax.vmap(cnt.increment_at_coordinate, in_axes=[None, 0])
+    increment_fn = jax.vmap(util.increment_at_coordinate, in_axes=[None, 0])
     ngram_fn = jax.vmap(util.ngrams, [0,None])
     pad_fn = jax.vmap(util.pad, [0, None])
 
@@ -80,13 +79,12 @@ if __name__ == '__main__':
             all_x.append(x)
         all_x = jnp.concatenate(all_x, axis=0)
 
-        _matrix = increment_fn(cnt.init_matrix(), all_x)
+        _matrix = increment_fn(util.init_matrix(), all_x)
         matrix = matrix + _matrix.sum(0)
 
         jax.clear_backends()
 
         if (idx > 0) and (idx%args.save_interval == 0):
             jnp.save("checkpoint_{}.npy".format(idx), matrix)
-        # print("Num of ngram for {}\n Count: {}".format(x[0], cnt.get_value(matrix, x[0])))
 
     jnp.save("checkpoint_{}_finished.npy".format(idx), matrix)
