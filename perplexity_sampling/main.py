@@ -44,6 +44,7 @@ if __name__ == '__main__':
     parser.add_argument("--vocab_path", type=str)
     parser.add_argument("--matrix_path", default=None, type=str)
     parser.add_argument("--ngram", default=5, type=int)
+    parser.add_argument("--build_matrix", default=True, type=bool)
     args = parser.parse_args()
 
     seqio.add_global_cache_dirs(["/fsx/lintangsutawika/data/"])
@@ -68,10 +69,10 @@ if __name__ == '__main__':
     
     pad_fn = jax.vmap(util.pad, [0, None])
 
-    if args.build_ngram_matrix:
+    if args.build_matrix:
         
-        matrix = util.init_matrix()
-        increment_fn = jax.vmap(util.increment_at_coordinate, in_axes=[None, 0])
+        matrix = util.init_matrix(vocab_size, k)
+        increment_fn = jax.vmap(util.increment_at_coordinate, in_axes=[None, 0, None])
         ngram_fn = jax.vmap(util.ngrams, [0,None])
 
         total_tokens = 0
@@ -92,8 +93,7 @@ if __name__ == '__main__':
             all_x = all_x[jnp.where(all_x.sum(1) != 0)]
 
             matrix = matrix + increment_fn(matrix, all_x, k).sum(0)
-
-            # jax.clear_backends()
+            jax.clear_backends()
 
             if (idx > 0) and (idx%args.save_interval == 0):
                 jnp.save("checkpoint_{}.npy".format(idx), matrix)
