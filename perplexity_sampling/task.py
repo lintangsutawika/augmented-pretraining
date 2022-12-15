@@ -29,7 +29,7 @@ def extract_text_from_json_tf(json: str):
     output = tf.strings.split(output, '",', maxsplit=1)[0]
     return {"text": output}
 
-DEFAULT_SPM_PATH = "/fsx/lintangsutawika/augmented-pretraining/c4.model"
+DEFAULT_SPM_PATH = "gs://t5-data/vocabs/mc4.250000.100extra/sentencepiece.model"
 OUTPUT_FEATURES = {
     "text":
         seqio.Feature(
@@ -39,7 +39,7 @@ OUTPUT_FEATURES = {
     }
 
 TaskRegistry.add(
-    "calculate_perplexity",
+    "calculate_perplexity_mt5",
     source=seqio.TextLineDataSource(
         split_to_filepattern={
             "train": ["/fsx/lintangsutawika/c4-train.00974-of-01024.json"],
@@ -53,4 +53,3 @@ TaskRegistry.add(
     output_features=OUTPUT_FEATURES,
     metric_fns=[]
 )
-
