@@ -52,7 +52,7 @@ def increment_at_coordinate(matrix, ngram, k):
     else:
         indices = jnp.expand_dims(ngram, 0)
 
-    return matrix + BCOO((increment, indices), shape=matrix.shape)
+    return BCOO((increment, indices), shape=matrix.shape)
 
 
 @partial(jax.jit, static_argnames=['k'])
@@ -79,7 +79,6 @@ def get_value(matrix, ngram, k):
 
     return jax.experimental.sparse.bcoo_multiply_sparse(matrix, x).sum()
 
-@jax.jit
 def pad(sequence, n):
 
     if len(sequence) < n:
