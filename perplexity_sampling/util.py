@@ -79,6 +79,7 @@ def get_value(matrix, ngram, k):
 
     return jax.experimental.sparse.bcoo_multiply_sparse(matrix, x).sum()
 
+
 def pad(sequence, n):
 
     if len(sequence) < n:
@@ -90,13 +91,3 @@ def pad(sequence, n):
     else:
         return sequence
 
-
-# @jax.jit
-# @partial(jax.jit, static_argnames=['from_idx', 'to_idx'])
-def get_slice(sequence, from_idx, to_idx):
-
-    from_idx = from_idx * ~jnp.less(from_idx, 0)
-    to_idx = to_idx * ~jnp.less(to_idx, 0)
-    to_idx = to_idx
-
-    return jax.lax.dynamic_slice(sequence, (from_idx,), (to_idx-from_idx+1,))
