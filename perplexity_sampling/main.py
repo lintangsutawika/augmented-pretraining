@@ -7,7 +7,7 @@ import jax.numpy as jnp
 
 from perplexity_sampling import task
 from perplexity_sampling import util
-from perplexity_sampling import matrix
+from perplexity_sampling import model
 
 from tqdm import tqdm
 from functools import partial
@@ -17,19 +17,18 @@ initialise_tracking()
 import tensorflow as tf
 tf.config.experimental.set_visible_devices([], "GPU")
 
-def PP(w):
-    sbs = StupidBackoffSmoothing(matrix=matrix, k=args.k, N=args.N)
-    log_score = sbs.score(w, k=5)
-    return 10**(-log_score)
+# def PP(w):
+#     sbs = StupidBackoffSmoothing(matrix=matrix, k=args.k, N=args.N)
+#     log_score = sbs.score(w, k=5)
+#     return 10**(-log_score)
 
-def gaussian_sampling(alpha, beta, W, X):
+# def gaussian_sampling(alpha, beta, W, X):
 
-    exponent = (-1/beta) * jnp.power(((PP(W) - X)/X), 2)
-    return alpha * jnp.exp(exponent)
+#     exponent = (-1/beta) * jnp.power(((PP(W) - X)/X), 2)
+#     return alpha * jnp.exp(exponent)
 
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = '0.95'
-os.environ["xla_force_host_platform_device_count"] = '64'
 
 if __name__ == '__main__':
 
@@ -37,14 +36,14 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--task", type=str)
+    parser.add_argument("--build_matrix", type=bool)
     parser.add_argument("--batch_size", default=32, type=int)
-    parser.add_argument("--seq_length", default=4096, type=int)
+    parser.add_argument("--seq_length", default=512, type=int)
     parser.add_argument("--save_interval", default=500, type=int)
     parser.add_argument("--checkpoint_prefix", default="checkpoint_", type=str)
     parser.add_argument("--vocab_path", type=str)
     parser.add_argument("--matrix_path", default=None, type=str)
     parser.add_argument("--ngram", default=5, type=int)
-    parser.add_argument("--build_matrix", default=True, type=bool)
     args = parser.parse_args()
 
     seqio.add_global_cache_dirs(["/fsx/lintangsutawika/data/"])
@@ -75,21 +74,38 @@ if __name__ == '__main__':
         increment_fn = jax.vmap(util.increment_at_coordinate, in_axes=[None, 0, None])
         ngram_fn = jax.vmap(util.ngrams, [0,None])
 
-        total_tokens = 0
+        def get_k_ngrams(sequence, k):
 
-        for idx, ex in tqdm(enumerate(dataset.as_numpy_iterator())):
-
-            total_tokens += ex['text'][jnp.where(ex['text'] != 0)].shape[0]
-            
-            all_x = []
             for _k in range(1, k+1):
-                x = ngram_fn(ex['text'], _k)
+                x = ngram_fn(sequence, _k)
                 x = jnp.reshape(x, (-1,_k))
                 x = pad_fn(x, k)
 
-                all_x.append(x)
+                if _k == 1:
+                    all_x = x
+                else:
+                    all_x = jnp.concatenate([all_x, x], axis=0)
 
-            all_x = jnp.concatenate(all_x, axis=0)
+            return all_x
+
+        get_k_ngram_fn = jax.pmap(
+            partial(get_k_ngrams, k=k),
+            in_axes=(0)
+        )
+
+        total_tokens = 0
+        for idx, ex in tqdm(enumerate(dataset.as_numpy_iterator())):
+
+            seq = ex['text']
+            _, seq_length = seq.shape
+
+            num_devices = len(jax.devices())
+            seq = seq.reshape(num_devices, -1, seq_length)
+
+            total_tokens += seq[jnp.where(seq != 0)].shape[0]
+            
+            all_x = get_k_ngram_fn(seq)
+            all_x = jnp.reshape(all_x, (-1, k))
             all_x = all_x[jnp.where(all_x.sum(1) != 0)]
 
             matrix = matrix + increment_fn(matrix, all_x, k).sum(0)
@@ -99,3 +115,26 @@ if __name__ == '__main__':
                 jnp.save("checkpoint_{}.npy".format(idx), matrix)
 
         jnp.save("checkpoint_{}_finished.npy".format(idx), matrix)
+
+    else:
+
+        matrix = jnp.load(args.matrix_path, allow_pickle=True).tolist()
+        sbs = model.StupidBackoffSmoothing(matrix=matrix, k=args.ngram, N=18693964)
+
+        # sbs.score(jnp.zeros(num_device, bs, 8, k))
+
+        # fn = jax.vmap(partial(sbs.score, k=k), (0))
+
+        for idx, ex in tqdm(enumerate(dataset.as_numpy_iterator())):
+
+            seq = ex['text']
+            _, seq_length = seq.shape
+
+            num_devices = len(jax.devices())
+            # seq = seq.reshape(num_devices, -1, seq_length)
+            # seq = jnp.expand_dims(seq[:,0,:10], 1)
+
+            # log_scores = sbs.score(sentence, k)
+            break
+
+        # fn(sentence)

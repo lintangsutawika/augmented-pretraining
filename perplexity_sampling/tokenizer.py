@@ -5,7 +5,7 @@ import sentencepiece as spm
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--build_tokenizer", default=False, type=bool)
+parser.add_argument("--build_tokenizer", type=bool)
 parser.add_argument("--tokenizer_input", default=None, type=str)
 parser.add_argument("--tokenizer_prefix", default=None, type=str)
 parser.add_argument("--num_threads", default=16, type=int)
@@ -25,5 +25,5 @@ if __name__ == '__main__':
             eos_id=3,
             max_sentence_length=64_000,
             hard_vocab_limit=False,
-            model_type="bpe",
+            model_type="word",
             )
