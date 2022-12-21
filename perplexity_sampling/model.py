@@ -108,6 +108,7 @@ class StupidBackoffSmoothing:
 
         denominator = jnp.roll(score_table, 1, 0)
         denominator = denominator.at[0,:].set(N)
+        score_table = jnp.divide(score_table, denominator)
 
         alpha_matrix = get_alpha_matrix(alpha, k, seq_length)
         score_table = jnp.multiply(score_table, alpha_matrix)
@@ -115,7 +116,7 @@ class StupidBackoffSmoothing:
         score = jnp.nanmax(score_table, axis=0)
 
         # return score
-        return jnp.log10(score).sum() * (-1/seq_length)
+        return jnp.log10(score).sum(1) * (-1/seq_length)
 
     # # @partial(jax.jit, static_argnums=(0))
     # def score(self, w_seq, k):
