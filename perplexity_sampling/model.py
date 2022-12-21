@@ -13,10 +13,15 @@ def get_alpha_matrix(alpha, k, seq_length):
     return jnp.power(base_matrix, exponent_matrix)
 
 
+def shift_left(matrix, i):
+
+    return jnp.multiply(matrix, jnp.roll(matrix, -1*i))
+
+
 class StupidBackoffSmoothing:
 
     def __init__(
-        self, matrix, k, N, alpha=0.4, micro_bs=8
+        self, matrix, k, N, alpha=0.4, micro_bs=16
         ):
 
         self.matrix = matrix
@@ -25,7 +30,27 @@ class StupidBackoffSmoothing:
         self.alpha = alpha
         self.micro_bs = micro_bs
 
-    @partial(jax.jit, static_argnums=(0,))
+        get_index_fn = partial(util.get_by_multiplication_jit, matrix=self.matrix)
+        vmap_get_index = jax.vmap(
+            get_index_fn,
+            in_axes=(0)
+            )
+
+        pmap_get_index = jax.pmap(
+            vmap_get_index,
+            in_axes=(0)
+            )
+
+        def process_index(indices):
+            return jax.lax.map(vmap_get_index, indices)
+
+        self.pmap_process_index = jax.pmap(
+            process_index,
+            in_axes=(0)
+            )
+
+
+    # @partial(jax.jit, static_argnums=(0,))
     def score(self, w_seq):
 
         k = self.k
@@ -73,43 +98,13 @@ class StupidBackoffSmoothing:
         padded_seq_ngrams = pmap_pad_ngram_table(seq).reshape(num_device, -1, k)
 
         # return padded_seq_ngrams
-
-        get_index_fn = partial(util.get_by_multiplication_jit, matrix=matrix)
-        vmap_get_index = jax.vmap(
-            get_index_fn,
-            in_axes=(0)
-            )
-
-        pmap_get_index = jax.pmap(
-            vmap_get_index,
-            in_axes=(0)
-            )
-
-        def process_index(indices):
-            return jax.lax.map(vmap_get_index, indices)
-
-
-        pmap_process_index = jax.pmap(
-            process_index,
-            in_axes=(0)
-            )
-
-        # jax.clear_backends()
         xs = padded_seq_ngrams.reshape(num_device, -1, micro_bs, k) # bs, -1, k -> num_device, -1, 2, k
-        # return xs
+        score_table = self.pmap_process_index(xs).reshape(bs, k, -1)
 
-        # score_table = jnp.logical_and(score_table, w_seq.reshape((bs, 1, seq_length)).repeat(k, 1))
-        score_table = pmap_process_index(xs).reshape(bs, k, -1)
-        return score_table
-
-        # score_table = pmap_get_index().reshape(k, -1)
-
-        # # Todo, need to make this more efficient
-        # score_table = jnp.stack(
-        #     [util.get_by_indexing_jit(matrix, x) for x in padded_seq_ngrams],
-        #     axis=0,
-        #     dtype=jnp.float32
-        #     ).reshape(k, -1)
+        # mask = jnp.isinf(w_seq/0).reshape(bs, 1, -1).repeat(5, 1)
+        base = jnp.isinf(w_seq/0)
+        mask = jnp.stack([shift_left(base, i) for i in k], 1)
+        score_table = jnp.multiply(score_table, mask)
 
         denominator = jnp.roll(score_table, 1, 0)
         denominator = denominator.at[0,:].set(N)
