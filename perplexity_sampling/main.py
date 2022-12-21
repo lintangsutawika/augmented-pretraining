@@ -112,18 +112,14 @@ if __name__ == '__main__':
             jax.clear_backends()
 
             if (idx > 0) and (idx%args.save_interval == 0):
-                jnp.save("checkpoint_{}.npy".format(idx), matrix)
+                jnp.save("{}_{}.npy".format(args.checkpoint_prefix, idx), matrix)
 
-        jnp.save("checkpoint_{}_finished.npy".format(idx), matrix)
+        jnp.save("{}_{}_finished.npy".format(args.checkpoint_prefix, idx), matrix)
 
     else:
 
         matrix = jnp.load(args.matrix_path, allow_pickle=True).tolist()
         sbs = model.StupidBackoffSmoothing(matrix=matrix, k=args.ngram, N=18693964)
-
-        # sbs.score(jnp.zeros(num_device, bs, 8, k))
-
-        # fn = jax.vmap(partial(sbs.score, k=k), (0))
 
         for idx, ex in tqdm(enumerate(dataset.as_numpy_iterator())):
 
@@ -134,7 +130,7 @@ if __name__ == '__main__':
             # seq = seq.reshape(num_devices, -1, seq_length)
             # seq = jnp.expand_dims(seq[:,0,:10], 1)
 
-            # log_scores = sbs.score(sentence, k)
+            log_scores = sbs.score(seq)
             break
 
         # fn(sentence)

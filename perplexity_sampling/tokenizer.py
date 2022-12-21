@@ -9,7 +9,7 @@ parser.add_argument("--build_tokenizer", type=bool)
 parser.add_argument("--tokenizer_input", default=None, type=str)
 parser.add_argument("--tokenizer_prefix", default=None, type=str)
 parser.add_argument("--num_threads", default=16, type=int)
-parser.add_argument("--vocab_size", default=500_000, type=int)
+parser.add_argument("--vocab_size", default=25_000, type=int)
 args = parser.parse_args()
 
 if __name__ == '__main__':
@@ -23,7 +23,7 @@ if __name__ == '__main__':
             unk_id=1,
             bos_id=2,
             eos_id=3,
-            max_sentence_length=64_000,
+            max_sentence_length=1_000_000,
             hard_vocab_limit=False,
             model_type="word",
             )
