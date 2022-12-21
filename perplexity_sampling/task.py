@@ -78,3 +78,28 @@ TaskRegistry.add(
         },
     metric_fns=[]
 )
+
+
+TaskRegistry.add(
+    "calculate_perplexity_cc_en",
+    source=seqio.TextLineDataSource(
+        split_to_filepattern={
+            "train": ["/fsx/lintangsutawika/c4-train.00974-of-01024.json"],
+            }
+        ),
+        preprocessors=[
+            extract_text_from_json_tf,
+            seqio.preprocessors.tokenize,
+            seqio.CacheDatasetPlaceholder(),
+    ],
+    output_features={
+        "text":
+            seqio.Feature(
+                vocabulary=seqio.SentencePieceVocabulary(
+                    "gs://t5-data/vocabs/cc_en.32000/sentencepiece.model"
+                    ),
+                add_eos=True,
+                required=False),
+        },
+    metric_fns=[]
+)
