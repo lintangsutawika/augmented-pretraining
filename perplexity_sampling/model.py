@@ -21,7 +21,7 @@ def shift_left(matrix, i):
 class StupidBackoffSmoothing:
 
     def __init__(
-        self, matrix, k, N, alpha=0.4, micro_bs=16
+        self, matrix, k, N, alpha=0.4, micro_bs=32
         ):
 
         self.matrix = matrix
@@ -101,9 +101,11 @@ class StupidBackoffSmoothing:
         xs = padded_seq_ngrams.reshape(num_device, -1, micro_bs, k) # bs, -1, k -> num_device, -1, 2, k
         score_table = self.pmap_process_index(xs).reshape(bs, k, -1)
 
+        return score_table
+
         # mask = jnp.isinf(w_seq/0).reshape(bs, 1, -1).repeat(5, 1)
         base = jnp.isinf(w_seq/0)
-        mask = jnp.stack([shift_left(base, i) for i in k], 1)
+        mask = jnp.stack([shift_left(base, i) for i in range(k)], 1)
         score_table = jnp.multiply(score_table, mask)
 
         denominator = jnp.roll(score_table, 1, 0)
