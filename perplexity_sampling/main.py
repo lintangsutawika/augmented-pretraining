@@ -61,7 +61,10 @@ if __name__ == '__main__':
     dataset = seqio.utils.trim_and_pad_dataset(dataset, sequence_length)
     dataset = dataset.batch(args.batch_size, drop_remainder=True)
 
-    tokenizer = spm.SentencePieceProcessor(model_file=args.vocab_path)
+    if args.vocab_path.startswith("gs://"):
+        tokenizer = seqio.SentencePieceVocabulary(args.vocab_path).tokenizer
+    else:
+        tokenizer = spm.SentencePieceProcessor(model_file=args.vocab_path)
 
     k = args.ngram
     vocab_size = tokenizer.vocab_size()
