@@ -4,13 +4,8 @@ from jax.experimental.sparse import BCOO
 
 from functools import partial
 
-@partial(jax.jit, static_argnames=['n'])
-def ngrams(sequence, n):
-
-    # assert len(sequence) >= n
-
-    # if type(sequence) == list:
-    #     sequence = jnp.asarray(sequence)
+@partial(jax.jit, static_argnames=['n', 'k'])
+def get_ngrams(sequence, n, k):
 
     history = jax.lax.slice(sequence, [0], [n])
     sequence = jax.lax.slice(sequence, [n], [len(sequence)])
@@ -21,7 +16,27 @@ def ngrams(sequence, n):
     
     _, ys = jax.lax.scan(_f, history, sequence)
 
-    return jnp.append(jnp.expand_dims(history, 0), ys, axis=0)
+    ngram = jnp.append(jnp.expand_dims(history, 0), ys, axis=0)
+    ngram = jnp.reshape(ngram, (-1,n))
+    ngram = pad_fn(ngram, k)
+
+    return ngram
+
+
+vmap_get_ngrams = jax.vmap(get_ngrams, [0, None, None])
+
+
+def get_k_ngrams(sequence, k):
+
+    num, *_ = sequence.shape
+
+    return jnp.concatenate(
+        # [ngram_fn(sequence, n, k) for n in range(1,k+1)],
+        [jnp.concatenate(
+            [vmap_get_ngrams(sequence, n, k), jnp.zeros((num, n-1, k), dtype=jnp.int32)], axis=1
+            ) for n in range(1,k+1)],
+        axis=1
+    )
 
 
 def init_matrix(num_vocab, k):
@@ -111,20 +126,5 @@ def pad(sequence, n):
     else:
         return sequence
 
-
-vmap_ngram = jax.vmap(ngrams, [0,None])
+# vmap_ngram = jax.vmap(ngrams, [0,None])
 pad_fn = jax.vmap(pad, [0, None])
-
-def get_k_ngrams(sequence, k):
-
-    for _k in range(1, k+1):
-        x = vmap_ngram(sequence, _k)
-        x = jnp.reshape(x, (-1,_k))
-        x = pad_fn(x, k)
-
-        if _k == 1:
-            all_x = x
-        else:
-            all_x = jnp.concatenate([all_x, x], axis=0)
-
-    return all_x
