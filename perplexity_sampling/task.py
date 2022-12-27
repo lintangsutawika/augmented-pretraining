@@ -37,10 +37,10 @@ TaskRegistry.add(
             "train": ["/fsx/lintangsutawika/c4-train.00974-of-01024.json"],
             }
         ),
-        preprocessors=[
-            extract_text_from_json_tf,
-            seqio.preprocessors.tokenize,
-            seqio.CacheDatasetPlaceholder(),
+    preprocessors=[
+        extract_text_from_json_tf,
+        seqio.preprocessors.tokenize,
+        seqio.CacheDatasetPlaceholder(),
     ],
     output_features={
         "text":
