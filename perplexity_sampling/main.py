@@ -69,30 +69,13 @@ if __name__ == '__main__':
     k = args.ngram
     vocab_size = tokenizer.vocab_size()
     
-    pad_fn = jax.vmap(util.pad, [0, None])
-
     if args.build_matrix:
-        
+
         matrix = util.init_matrix(vocab_size, k)
         increment_fn = jax.vmap(util.increment_at_coordinate, in_axes=[None, 0, None])
-        ngram_fn = jax.vmap(util.ngrams, [0,None])
 
-        def get_k_ngrams(sequence, k):
-
-            for _k in range(1, k+1):
-                x = ngram_fn(sequence, _k)
-                x = jnp.reshape(x, (-1,_k))
-                x = pad_fn(x, k)
-
-                if _k == 1:
-                    all_x = x
-                else:
-                    all_x = jnp.concatenate([all_x, x], axis=0)
-
-            return all_x
-
-        get_k_ngram_fn = jax.pmap(
-            partial(get_k_ngrams, k=k),
+        pmap_get_k_ngram = jax.pmap(
+            partial(util.get_k_ngrams, k=k),
             in_axes=(0)
         )
 
@@ -107,17 +90,38 @@ if __name__ == '__main__':
 
             total_tokens += seq[jnp.where(seq != 0)].shape[0]
             
-            all_x = get_k_ngram_fn(seq)
-            all_x = jnp.reshape(all_x, (-1, k))
-            all_x = all_x[jnp.where(all_x.sum(1) != 0)]
+            all_x = pmap_get_k_ngram(seq).reshape(-1, k)
 
             matrix = matrix + increment_fn(matrix, all_x, k).sum(0)
-            jax.clear_backends()
 
             if (idx > 0) and (idx%args.save_interval == 0):
                 jnp.save("{}_{}.npy".format(args.checkpoint_prefix, idx), matrix)
 
         jnp.save("{}_{}_finished.npy".format(args.checkpoint_prefix, idx), matrix)
+
+        tree = {}
+        for count, indices in tqdm(zip(matrix.data, matrix.indices), total=len(matrix.data)):
+            indices = indices.tolist()
+            count = count.astype(int)
+
+            _i = 0
+            _tree = tree
+            for idx in indices:
+                # idx_name = str(idx)
+                idx_name = int(idx)
+                if idx_name not in _tree:
+                    _tree[idx_name] = {}
+                # else:
+                #     _tree[idx_name] = {**_tree[idx_name], **{idx_name: {}}}
+                _tree = _tree[idx_name]
+
+                if (_i == len(indices)-1) or (indices[_i+1] == 0):
+                    # tree[idx] = {**tree[idx], **{idx: count}}
+                    _tree[-1] = count
+                    break
+                _i += 1
+
+        jnp.save("{}_ngram_tree.npy".format(args.checkpoint_prefix), tree)
 
     else:
 
@@ -133,7 +137,7 @@ if __name__ == '__main__':
             # seq = seq.reshape(num_devices, -1, seq_length)
             # seq = jnp.expand_dims(seq[:,0,:10], 1)
 
-            log_scores = sbs.score(seq)
+            # log_scores = sbs.score(seq)
             break
 
         # fn(sentence)
