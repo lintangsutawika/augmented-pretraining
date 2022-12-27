@@ -94,7 +94,7 @@ class StupidBackoffSmoothing:
             )
 
         num_device = jax.device_count()
-        seq = w_seq.reshape(num_device, -1, 1, seq_length)
+        seq = w_seq.reshape(num_device, -1, seq_length)
         padded_seq_ngrams = pmap_pad_ngram_table(seq).reshape(num_device, -1, k)
 
         # return padded_seq_ngrams
