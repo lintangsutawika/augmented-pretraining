@@ -21,113 +21,77 @@ def shift_left(matrix, i):
 class StupidBackoffSmoothing:
 
     def __init__(
-        self, matrix, k, N, alpha=0.4, micro_bs=32
+        self, matrix, k, N, alpha=0.4
         ):
 
         self.matrix = matrix
         self.k = k
         self.N = N
         self.alpha = alpha
-        self.micro_bs = micro_bs
 
-        get_index_fn = partial(util.get_by_multiplication_jit, matrix=self.matrix)
-        vmap_get_index = jax.vmap(
-            get_index_fn,
-            in_axes=(0)
-            )
-
-        pmap_get_index = jax.pmap(
-            vmap_get_index,
-            in_axes=(0)
-            )
-
-        def process_index(indices):
-            return jax.lax.map(vmap_get_index, indices)
-
-        self.pmap_process_index = jax.pmap(
-            process_index,
-            in_axes=(0)
-            )
-
+        self.get_ngram_count = partial(util.get_ngram_count, matrix=matrix)
 
     # @partial(jax.jit, static_argnums=(0,))
-    def score(self, w_seq):
+    def score(self, seq):
 
         k = self.k
         N = self.N
         alpha = self.alpha
         matrix = self.matrix
-        micro_bs = self.micro_bs
         
-        pmap_get_k_ngram = jax.pmap(
-            partial(util.get_k_ngrams, k=k),
-            in_axes=(0)
-        )
+        bs, seq_length = seq.shape
 
-        bs, seq_length = w_seq.shape
-
-        @partial(jax.jit, static_argnames=['k', 'seq_length'])
-        def pad_ngram_table(carry, k, seq_length):
-
-            carry = util.get_k_ngrams(carry, k)
-
-            idx = 0
-            for _k in range(k):
-
-                part_a = jax.lax.slice(carry, [0,0], [idx+seq_length-_k,k])
-                part_b = jax.lax.slice(carry, [idx+seq_length-_k,0], [carry.shape[0],k])
-                part_insert = jnp.zeros((_k,k), dtype=jnp.int32)
-                idx = idx + (seq_length-_k) + part_insert.shape[0]
-
-                carry = jnp.concatenate([part_a, part_insert, part_b], 0)
-            
-            return carry
-
-        fn_pad_ngram_table = partial(pad_ngram_table, k=k, seq_length=seq_length)
-        vmap_pad_ngram_table = jax.vmap(
-            fn_pad_ngram_table,
-            in_axes=(0)
-            )
+        fn_get_k_ngrams = partial(util.get_k_ngrams, k=k)
         pmap_pad_ngram_table = jax.pmap(
-            vmap_pad_ngram_table,
+            fn_get_k_ngrams,
             in_axes=(0)
             )
 
         num_device = jax.device_count()
-        seq = w_seq.reshape(num_device, -1, seq_length)
-        padded_seq_ngrams = pmap_pad_ngram_table(seq).reshape(num_device, -1, k)
+        _seq = seq.reshape(num_device, -1, seq_length)
+        padded_seq_ngrams = pmap_pad_ngram_table(_seq).reshape(-1, k)
 
-        # return padded_seq_ngrams
-        xs = padded_seq_ngrams.reshape(num_device, -1, micro_bs, k) # bs, -1, k -> num_device, -1, 2, k
-        score_table = self.pmap_process_index(xs).reshape(bs, k, -1)
+        # score_table = jnp.stack([self.get_ngram_count(i) for i in padded_seq_ngrams], 0).reshape(bs, k, -1)
+        score_table = jnp.asarray([self.get_ngram_count(i) for i in padded_seq_ngrams]).reshape(bs, k, -1)
 
-        return score_table
-
-        # mask = jnp.isinf(w_seq/0).reshape(bs, 1, -1).repeat(5, 1)
-        base = jnp.isinf(w_seq/0)
-        mask = jnp.stack([shift_left(base, i) for i in range(k)], 1)
+        base = (seq != 0).sum(1).astype(jnp.int32)
+        # mask = jnp.stack(jnp.asarray([[[1]*(sl-i)+[0]*(seq_length-sl+i) for i in range(k)] for sl in base.tolist()]), 0)
+        mask = jnp.asarray([[[1]*(sl-i)+[0]*(seq_length-sl+i) for i in range(k)] for sl in base.tolist()])
         score_table = jnp.multiply(score_table, mask)
 
-        denominator = jnp.roll(score_table, 1, 0)
-        denominator = denominator.at[0,:].set(N)
+        denominator = jnp.roll(score_table, 1, 1)
+        denominator = denominator.at[:, 0,:].set(N)
         score_table = jnp.divide(score_table, denominator)
 
         alpha_matrix = get_alpha_matrix(alpha, k, seq_length)
         score_table = jnp.multiply(score_table, alpha_matrix)
 
-        score = jnp.nanmax(score_table, axis=0)
+        score = jnp.nanmax(score_table, axis=1)
 
-        # return score
-        return jnp.log10(score).sum(1) * (-1/seq_length)
+        score = jnp.log10(score)
+        score = jnp.nan_to_num(score, posinf=0.0, neginf=0.0)
+
+        return - score.sum(1) / base
+
+    # def calculate_log_score(score_table, alpha, k, seq_length):
+    #     alpha_matrix = get_alpha_matrix(alpha, k, seq_length)
+    #     score_table = jnp.multiply(score_table, alpha_matrix)
+
+    #     score = jnp.nanmax(score_table, axis=1)
+
+    #     score = jnp.log10(score)
+    #     score = jnp.nan_to_num(score, posinf=0.0, neginf=0.0)
+
+    #     return score
 
     # # @partial(jax.jit, static_argnums=(0))
-    # def score(self, w_seq, k):
+    # def score(self, seq, k):
 
-    #     N = len(w_seq)
+    #     N = len(seq)
     #     log_score = 0
     #     for idx in range(0, N):
     #         # w_i | w_{i-k+1}^{i}
-    #         log_score += jnp.log10(self.S(w_seq, idx, k=k))
+    #         log_score += jnp.log10(self.S(seq, idx, k=k))
 
     #     return log_score * (-1/N)
 
