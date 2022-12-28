@@ -115,6 +115,25 @@ def get_by_multiplication(indices, matrix):
 
 get_by_multiplication_jit = jax.jit(get_by_multiplication)
 
+
+def get_ngram_count(indices, matrix):
+
+    indices = indices.tolist()
+    _m = matrix
+    for j, i in enumerate(indices):
+        if (j == (len(indices)-1)) or (i == 0):
+            break
+        elif i not in _m:
+            return 0
+        else:
+            _m = _m[i]
+
+    if -1 in _m:
+        return int(_m[-1])
+    else:
+        return 0
+
+
 def pad(sequence, n):
 
     if len(sequence) < n:
