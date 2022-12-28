@@ -101,6 +101,7 @@ if __name__ == '__main__':
 
         tree = {}
         for count, indices in tqdm(zip(matrix.data, matrix.indices), total=len(matrix.data)):
+
             indices = indices.tolist()
             count = count.astype(int)
 
@@ -117,27 +118,33 @@ if __name__ == '__main__':
 
                 if (_i == len(indices)-1) or (indices[_i+1] == 0):
                     # tree[idx] = {**tree[idx], **{idx: count}}
-                    _tree[-1] = count
+                    if -1 in _tree:
+                        _tree[-1] += int(count)
+                    else:
+                        _tree[-1] = int(count)
                     break
                 _i += 1
 
+        tree[0] = total_tokens
         jnp.save("{}_ngram_tree.npy".format(args.checkpoint_prefix), tree)
 
     else:
 
+        import seaborn as sns
+        from matplotlib import pyplot as plt
+
         matrix = jnp.load(args.matrix_path, allow_pickle=True).tolist()
-        sbs = model.StupidBackoffSmoothing(matrix=matrix, k=args.ngram, N=18693964)
+        sbs = model.StupidBackoffSmoothing(matrix=matrix, k=args.ngram, N=matrix[0])
 
-        for idx, ex in tqdm(enumerate(dataset.as_numpy_iterator())):
-
+        all_log_scores = []
+        for idx, ex in tqdm(enumerate(dataset.as_numpy_iterator()), total=len(list(dataset))):
             seq = ex['text']
-            _, seq_length = seq.shape
+            log_scores = sbs.score(seq)
+            for i, score in enumerate(log_scores):
+                if score > 2:
+                    print(score, "-", ex['text_pretokenized'][i].decode())
+            all_log_scores.extend(log_scores.tolist())
 
-            num_devices = len(jax.devices())
-            # seq = seq.reshape(num_devices, -1, seq_length)
-            # seq = jnp.expand_dims(seq[:,0,:10], 1)
+        sns.displot(all_log_scores) # kde=True)
+        plt.savefig('ngram_distribution.png')
 
-            # log_scores = sbs.score(seq)
-            break
-
-        # fn(sentence)
