@@ -12,6 +12,8 @@ import numpy as np
 from tqdm import tqdm
 from urllib.parse import unquote
 
+import util
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--wiki_dump_path", default=None, type=str)
 parser.add_argument("--page_list_path", default=None, type=str)
@@ -65,24 +67,7 @@ class WikiDump:
                 names=["id", "namespace", "title"]
             )
 
-            import ast
-            def reformat(x):
-                try:
-                    if x[-1] != "\'":
-                        x = x+"\'"
-
-                    x = ast.literal_eval(
-                        "b"+x
-                    ).decode('utf-8')
-                    x = re.sub("_", " ", x)
-
-                except Exception as e:
-                    print("Got error: {}".format(e))
-                    print("On string: {}".format(x))
-
-                return x
-
-            self.redirect_df["title"] = self.redirect_df["title"].apply(reformat)
+            self.redirect_df["title"] = self.redirect_df["title"].apply(util.reformat)
 
         if (self.data_frame_path is not None) and (os.path.exists(self.data_frame_path)):
             print("data_frame_path exists, loading....")
@@ -435,3 +420,5 @@ if __name__ == '__main__':
     # 4. Get file from article_file_index
     # 5. Get from articles from get_text_from_dir
     # 6. Select the title string from the articles
+
+    # Generate each type seperately for seqio to process in mixtures.

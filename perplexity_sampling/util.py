@@ -1,3 +1,5 @@
+import nltk
+
 import jax
 import jax.numpy as jnp
 from jax.experimental.sparse import BCOO
@@ -32,9 +34,14 @@ def get_k_ngrams(sequence, k):
 
     return jnp.concatenate(
         # [ngram_fn(sequence, n, k) for n in range(1,k+1)],
-        [jnp.concatenate(
-            [vmap_get_ngrams(sequence, n, k), jnp.zeros((num, n-1, k), dtype=jnp.int32)], axis=1
-            ) for n in range(1,k+1)],
+        [
+            jnp.concatenate(
+                [
+                    jnp.zeros((num, n-1, k), dtype=jnp.int32),
+                    vmap_get_ngrams(sequence, n, k)
+                ], axis=1
+            ) for n in reversed(range(1,k+1)) #range(1,k+1)
+            ],
         axis=1
     )
 
@@ -94,34 +101,13 @@ def get_value(matrix, ngram, k):
 
     return jax.experimental.sparse.bcoo_multiply_sparse(matrix, x).sum()
 
-## @partial(jax.jit, static_argnames=['matrix'])
-def get_by_indexing(indices, matrix):
-
-    i0, i1, i2, i3, i4 = indices
-
-    return matrix[i0, i1, i2, i3, i4].todense()
-
-get_by_indexing_jit = jax.jit(get_by_indexing)
-
-
-def get_by_multiplication(indices, matrix):
-
-    identity = jnp.array([1])
-    x = BCOO((identity, jnp.expand_dims(indices, 0)), shape=matrix.shape)
-
-    count = jax.experimental.sparse.bcoo_multiply_sparse(matrix, x).sum()
-    # jax.clear_backends()
-    return count
-
-get_by_multiplication_jit = jax.jit(get_by_multiplication)
-
 
 def get_ngram_count(indices, matrix):
 
     indices = indices.tolist()
     _m = matrix
     for j, i in enumerate(indices):
-        if (j == (len(indices)-1)) or (i == 0):
+        if (j >= len(indices)) or (i == 0):
             break
         elif i not in _m:
             return 0
@@ -147,3 +133,18 @@ def pad(sequence, n):
 
 # vmap_ngram = jax.vmap(ngrams, [0,None])
 pad_fn = jax.vmap(pad, [0, None])
+
+class StringTokenizer():
+
+    def __init__(self) -> None:
+        
+        nltk.download('punkt')
+        self.tokenizer = nltk.WordPunctTokenizer()
+    
+    def yield_split(self, iterator):
+        
+        for x in iterator:
+            yield self.split(x)
+
+    def split(self, x):
+        return " ".join(self.tokenizer.tokenize(x.lower()))

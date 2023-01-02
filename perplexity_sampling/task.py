@@ -17,18 +17,20 @@ import tensorflow as tf
 
 TaskRegistry = seqio.TaskRegistry
 
-# @seqio.map_over_dataset
-# def extract_text_from_jsonl_tf(json: str):
-#     output = tf.strings.split(json, '{"text": "', maxsplit=1)[1]
-#     output = tf.strings.split(output, '",', maxsplit=1)[0]
-#     return {"text": output}
-
 @seqio.map_over_dataset
 def extract_text_from_json_tf(json: str):
     output = tf.strings.split(json, '{"text":"', maxsplit=1)[1]
     output = tf.strings.split(output, '",', maxsplit=1)[0]
     return {"text": output}
 
+from perplexity_sampling.util import StringTokenizer
+st = StringTokenizer()
+
+@seqio.map_over_dataset
+def extract_text_word_split(json: str):
+    output = tf.strings.split(json, '{"text": "', maxsplit=1)[1]
+    output = tf.strings.split(output, '",', maxsplit=1)[0]
+    return {"text": st.split(output.numpy().decode())}
 
 TaskRegistry.add(
     "calculate_perplexity_mt5",
@@ -63,7 +65,7 @@ TaskRegistry.add(
             }
         ),
         preprocessors=[
-            extract_text_from_json_tf,
+            extract_text_word_split,
             seqio.preprocessors.tokenize,
             seqio.CacheDatasetPlaceholder(),
     ],
@@ -71,7 +73,7 @@ TaskRegistry.add(
         "text":
             seqio.Feature(
                 vocabulary=seqio.SentencePieceVocabulary(
-                    "/fsx/lintangsutawika/augmented-pretraining/c4.model"
+                    "/fsx/lintangsutawika/augmented-pretraining/output/c4_word_vocab.model"
                     ),
                 add_eos=True,
                 required=False),

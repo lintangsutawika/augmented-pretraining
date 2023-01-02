@@ -5,6 +5,8 @@ import argparse
 import jax
 import jax.numpy as jnp
 
+import numpy as np
+
 from perplexity_sampling import task
 from perplexity_sampling import util
 from perplexity_sampling import model
@@ -16,6 +18,16 @@ initialise_tracking()
 
 import tensorflow as tf
 tf.config.experimental.set_visible_devices([], "GPU")
+
+
+def get_perplexity(doc):
+    doc_log_score, doc_length = 0, 0
+    for line in doc.split("\\n"):
+        log_score = pp_model.score(line)
+        length = len(line.split()) + 1
+        doc_log_score += log_score
+        doc_length += length
+    return 10.0 ** (-doc_log_score / doc_length)
 
 # def PP(w):
 #     sbs = StupidBackoffSmoothing(matrix=matrix, k=args.k, N=args.N)
@@ -134,17 +146,42 @@ if __name__ == '__main__':
         from matplotlib import pyplot as plt
 
         matrix = jnp.load(args.matrix_path, allow_pickle=True).tolist()
-        sbs = model.StupidBackoffSmoothing(matrix=matrix, k=args.ngram, N=matrix[0])
+        model = model.StupidBackoffSmoothing(
+            matrix=matrix,
+            k=args.ngram,
+            N=matrix[0],
+            )
 
-        all_log_scores = []
+        # import kenlm
+        # model = kenlm.Model(args.model_path)
+
+        all_seq_score = []
+        kenlm_perplexity = []
         for idx, ex in tqdm(enumerate(dataset.as_numpy_iterator()), total=len(list(dataset))):
             seq = ex['text']
-            log_scores = sbs.score(seq)
-            for i, score in enumerate(log_scores):
-                if score > 2:
-                    print(score, "-", ex['text_pretokenized'][i].decode())
-            all_log_scores.extend(log_scores.tolist())
+            base = (seq != 0).sum(1).astype(jnp.float32)
+            seq_score = jnp.power(10, -model.score(seq)/base).tolist()
+            all_seq_score.extend(seq_score)
 
-        sns.displot(all_log_scores) # kde=True)
-        plt.savefig('ngram_distribution.png')
+        sns.displot(all_seq_score, kind='kde', aspect=2)
 
+        Q1, Q2, Q3 = np.quantile(all_seq_score, [0.25, 0.5, 0.75])
+        plt.axvline(Q1, color='r')
+        plt.axvline(Q2, color='r')
+        plt.axvline(Q3, color='r')
+
+        # sns.displot(weighted_perplexity, kind='kde', aspect=2)
+        plt.savefig('score_distribution.png')
+
+
+        # def stepwise_score(x):
+        #     if x <= Q1:
+
+
+        # step_seq_score = stepwise_score(step_seq_score)
+        # all_seq_score
+
+        # alpha = 0.78
+        # beta = 9 / 2
+        # exponential = np.exp((-1 / beta) * ((step_seq_score - Q2) / Q2) ** 2)
+        # weighted_perplexity = alpha * exponential
