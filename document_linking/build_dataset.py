@@ -43,18 +43,25 @@ def clean_text(
     regex_word=r"&gt;(.*?)&lt;"
     ):
 
-    replace = {}
-    for m in re.finditer(regex_url, text_string):
-        start_idx = m.start()
-        end_idx = m.end()
+    try:
+        replace = {}
+        for m in re.finditer(regex_url, text_string):
+            start_idx = m.start()
+            end_idx = m.end()
 
-        url_title_string = text_string[start_idx:end_idx]
-        n = re.search(regex_word, url_title_string)
-        word_string = url_title_string[n.start()+4:n.end()-4]
-        replace[url_title_string] = word_string
+            url_title_string = text_string[start_idx:end_idx]
+            n = re.search(regex_word, url_title_string)
+            word_string = url_title_string[n.start()+4:n.end()-4]
+            replace[url_title_string] = word_string
 
-    for key, value in replace.items():
-        text_string = re.sub(key, value, text_string)
+        for key, value in replace.items():
+            key = re.compile(
+                re.escape(key)
+            )
+            text_string = re.sub(key, value, text_string)
+    except:
+        print(text_string)
+        import sys; sys.exit()
 
     return text_string
 
