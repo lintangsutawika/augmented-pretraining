@@ -69,6 +69,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--wiki_dump_path", default=None, type=str)
     parser.add_argument("--lang", default=None, type=str)
+    parser.add_argument("--exclude_lang", default=None, type=str)
     parser.add_argument("--page_list_path", default=None, type=str)
     parser.add_argument("--pagelinks_list_path", default=None, type=str)
     parser.add_argument("--language_list_path", default=None, type=str)
@@ -166,14 +167,6 @@ if __name__ == '__main__':
         else:
             raise Exception("Need to define pagelinks_list_path")
 
-        # Other languages that discuss the page, get id=x
-        if language_list_path is not None:
-            print("Loading Language Links")
-            lang_df = pd.read_csv(
-                language_list_path, sep="\t",
-                names=["id", "language", "title"]
-            )
-
         file_path = []
         for dir in sorted(os.listdir(wiki_dump_path)):
             subdir = os.path.join(wiki_dump_path, dir)
@@ -198,6 +191,18 @@ if __name__ == '__main__':
         link_df = link_df[link_df["redirect"] == 0]
         link_df = link_df[~link_df['title'].str.contains("(disambiguation)")]
 
+        # Other languages that discuss the page, get id=x
+        if language_list_path is not None:
+            print("Loading Language Links")
+            lang_df = pd.read_csv(
+                language_list_path, sep="\t",
+                names=["id", "language", "title"]
+            )
+            lang_df = lang_df[(lang_df['language'] == "'id'") & (lang_df['title'] != "''")]
+            exclude_id = lang_df[(lang_df['language'] == "'id'") & (lang_df['title'] != "''")]['id'].values
+            # lang_df.rename(columns={"title": "{}_title".format(args.exclude_lang)}, inplace=True)
+            link_df = link_df[~link_df['id'].isin(exclude_id)]
+
         link_df.to_parquet(
             os.path.join(os.path.abspath(args.save_path), 'link_{}.parquet.gzip'.format(lang)),
             compression='gzip'
@@ -206,60 +211,50 @@ if __name__ == '__main__':
     # %run build_dataset.py \
     #     --lang "en" \
     #     --data_frame_path "/fsx/lintangsutawika/augmented-pretraining/document_linking/link_en.parquet.gzip" \
-    #     --connection "random"
+    #     --connection "random" \
+    #     --samples 10_000_000
     else:
         print("Loading {}".format(data_frame_path))
         link_df = pd.read_parquet(data_frame_path)
 
         import linecache
+        import jsonlines
 
-        collected_text = []
-        for n in range(num_samples):
+        json_output_path = os.path.join(
+            os.path.abspath(args.save_path),
+            'wiki_{}_{}.jsonl'.format(lang, args.connection)
+        )
 
-            num_sentence = 1
-            while num_sentence == 1:
-                sampled_text_list, num_sentence, inlink = sample_text(link_df)
+        with jsonlines.open(json_output_path, mode='a') as writer:
+            for n in tqdm(range(num_samples)):
 
-            _idx = random.sample(range(1, num_sentence), 1)[0]
-            segment_a = " ".join(sampled_text_list[:_idx])
+                num_sentence = 1
+                while num_sentence == 1:
+                    sampled_text_list, num_sentence, inlink = sample_text(link_df)
 
-            if args.connection == "contigious":
-                verbalizers = [
-                    "{} {}",
-                    "{} is continued by {}",
-                    "{} is followed by {}"
-                ]
+                _idx = random.sample(range(1, num_sentence), 1)[0]
+                segment_a = " ".join(sampled_text_list[:_idx])
 
-                segment_b = " ".join(sampled_text_list[_idx:])
+                verbalizers = util.verbalizers["{}_{}".format(args.lang, args.connection)]
 
-            elif args.connection == "random":
-                verbalizers = [
-                    "{} has no connection to {}",
-                    "{} is not connected to {}",
-                    "{} is not linked to {}"
-                ]
+                if args.connection == "contigious":
 
-                alt_num_sentence = 1
-                while alt_num_sentence == 1:
-                    alt_sampled_text_list, alt_num_sentence, _ = sample_text(link_df, id_list=inlink, id_sample="exclude")
+                    segment_b = " ".join(sampled_text_list[_idx:])
 
-                _idx = random.sample(range(alt_num_sentence), 2)
-                segment_b = " ".join(alt_sampled_text_list[min(_idx):max(_idx)])
+                else:
+                    if args.connection == "random":
+                        id_sample = "exclude"
+                    elif args.connection == "linked":
+                        id_sample = "sample"
 
-            elif args.connection == "linked":
-                verbalizers = [
-                    "{} is linked to {}",
-                    "{} has a connection to {}",
-                    "{} is connected to {}"
-                ]
+                    alt_num_sentence = 1
+                    while alt_num_sentence == 1:
+                        alt_sampled_text_list, alt_num_sentence, _ = sample_text(link_df, id_list=inlink, id_sample=id_sample)
 
-                alt_num_sentence = 1
-                while alt_num_sentence == 1:
-                    alt_sampled_text_list, alt_num_sentence, _ = sample_text(link_df, id_list=inlink, id_sample="sample")
+                    _idx = random.sample(range(alt_num_sentence), 2)
+                    segment_b = " ".join(alt_sampled_text_list[min(_idx):max(_idx)])
 
-                _idx = random.sample(range(alt_num_sentence), 2)
-                segment_b = " ".join(alt_sampled_text_list[min(_idx):max(_idx)])
+                sampled_verbalizer = random.sample(verbalizers, 1)[0]
+                text_line = sampled_verbalizer.format(segment_a, segment_b)
 
-            sampled_verbalizer = random.sample(verbalizers, 1)[0]
-            text_line = sampled_verbalizer.format(segment_a, segment_b)
-            collected_text.append(text_line)
+                writer.write({"text": text_line})
