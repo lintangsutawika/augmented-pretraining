@@ -338,17 +338,11 @@ if __name__ == '__main__':
         pool = mp.Pool(num_process)
         watcher = pool.apply_async(writer, (json_output_path, queue,))
 
-        # pbar = tqdm(total=num_samples_per_process)
-
-        # def update(*a):
-        #     pbar.update()
-
         jobs = []
         for i in range(num_process):
             job = pool.apply_async(
                 get_sample_text,
                 (num_samples_per_process, i, queue),
-                # callback=update,
                 )
             jobs.append(job)
 
@@ -358,18 +352,3 @@ if __name__ == '__main__':
         queue.put('kill')
         pool.close()
         pool.join()
-
-        # with mp.Pool(processes=num_process) as pool:
-        #     manager = mp.Manager()
-        #     queue = manager.Queue()    
-        #     watcher = pool.apply_async(writer, (json_output_path, queue,))
-
-        #     tqdm(
-        #         pool.starmap(
-        #             get_sample_text,
-        #             (num_samples_per_process, i, queue)
-        #             ),
-        #         total=len(file_path)
-        #     )
-
-        # queue.put('kill')
