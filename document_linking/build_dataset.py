@@ -4,6 +4,7 @@ import re
 import time
 import json
 import random
+import logging
 import argparse
 import linecache
 import jsonlines
@@ -78,7 +79,7 @@ def get_sample_text(num_samples, seed, queue=None):
 
     def _get_index(num_sentence, rng):
 
-        _idx = rng.integers(num_sentence, size=2)
+        _idx = rng.randint(num_sentence, size=2)
         _min, _max = min(_idx), max(_idx)
 
         if _min == _max:
@@ -90,9 +91,11 @@ def get_sample_text(num_samples, seed, queue=None):
     # for n in tqdm(range(num_samples)):
     for n in range(num_samples):
 
+        logging.info('ID {}: Sampling number {}/{}'.format(str(seed).zfill(3), n, num_samples))
+
         while True:
-            random_seed = int(time.time()) * seed * (n+1)
-            rng = np.random.default_rng(random_seed)
+            random_seed = int(time.time() / ((seed+1) * (n+1)))
+            rng = np.random.RandomState(seed=random_seed)
             num_sentence = 1
             while num_sentence == 1:
 
@@ -138,7 +141,7 @@ def get_sample_text(num_samples, seed, queue=None):
             if succesful_sample:
                 break
 
-        sampled_verbalizer = verbalizers[rng.integers(num_verbalizers, size=1)[0]]
+        sampled_verbalizer = verbalizers[rng.randint(num_verbalizers, size=1)[0]]
         text_line = sampled_verbalizer.format(segment_a, segment_b)
 
         json_string = json.dumps({"text": text_line}) + "\n"
@@ -166,9 +169,11 @@ if __name__ == '__main__':
     parser.add_argument("--language_list_path", default=None, type=str)
     parser.add_argument("--data_frame_path", default=None, type=str)
     parser.add_argument("--save_path", default="./", type=str)
+    parser.add_argument("--file_suffix", default="", type=str)
     parser.add_argument("--samples", default=100, type=int)
     parser.add_argument("--num_process", default=None, type=int)
     parser.add_argument("--connection", default="contigious", type=str)
+    parser.add_argument("--seed", default=None, type=int)
     args = parser.parse_args()
 
     def get_article_file_location(file_path):
@@ -311,15 +316,18 @@ if __name__ == '__main__':
             link_df = link_df[~link_df['id'].isin(exclude_id)]
 
         link_df.to_parquet(
-            os.path.join(os.path.abspath(args.save_path), 'link_{}.parquet.gzip'.format(lang)),
-            compression='gzip'
+            os.path.join(
+                os.path.abspath(args.save_path),
+                'link_{}.parquet{}.gzip'.format(lang, args.file_suffix)
+                ),
+            compression='gzip',
             )
 
     # %run build_dataset.py \
     #     --lang "en" \
-    #     --data_frame_path "/fsx/lintangsutawika/augmented-pretraining/document_linking/link_en.parquet.gzip" \
+    #     --data_frame_path "/fsx/lintangsutawika/03-cross-lingual-knowledge/augmented-pretraining/document_linking/link_en.parquet.gzip" \
     #     --connection "random" \
-    #     --samples 10_000_000
+    #     --samples 10_000
     else:
         print("Loading {}".format(data_frame_path))
         link_df = pd.read_parquet(data_frame_path)
@@ -327,8 +335,9 @@ if __name__ == '__main__':
 
         json_output_path = os.path.join(
             os.path.abspath(args.save_path),
-            'wiki_{}_{}.jsonl'.format(lang, args.connection)
+            'wiki_{}_{}{}.jsonl'.format(lang, args.connection, args.file_suffix)
         )
+        print("saving to {}".format(json_output_path))
 
         #must use Manager queue here, or will not work
         num_samples_per_process = num_samples // num_process
@@ -340,9 +349,12 @@ if __name__ == '__main__':
 
         jobs = []
         for i in range(num_process):
+            seed = i + 1
+            if args.seed is not None:
+                seed *= (args.seed+1)
             job = pool.apply_async(
                 get_sample_text,
-                (num_samples_per_process, i, queue),
+                (num_samples_per_process, seed, queue),
                 )
             jobs.append(job)
 

@@ -1,0 +1,16 @@
+#!/bin/bash
+#SBATCH --partition=cpu64
+#SBATCH --job-name=clk
+#SBATCH --nodes=10
+#SBATCH --output=/fsx/lintangsutawika/03-cross-lingual-knowledge/logs/%x_%j.out
+#SBATCH --exclusive
+#SBATCH --requeue
+#SBATCH --comment=neox
+
+source /fsx/lintangsutawika/03-cross-lingual-knowledge/env-wiki/bin/activate
+
+SCRIPT=$1
+CONNECTION=$2
+
+srun --comment neox \
+    bash ${SCRIPT} ${CONNECTION}
